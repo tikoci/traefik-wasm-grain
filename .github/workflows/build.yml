@@ -2,11 +2,14 @@ name: build-on-command
 
 on:
   workflow_dispatch:
-# push:
-#   paths:
-#     - Dockerfile
-#     - Makefile
-#     - '.github/workflows/build-on-commit.yaml'
+  push:
+    tag: *
+    paths:
+      - http-wasm.gr
+      - plugin.gr
+      - Makefile
+      - icon.png
+      - .traefik.yml
 
 env:
   PLATFORMS: linux/arm/v7,linux/arm64,linux/amd64
