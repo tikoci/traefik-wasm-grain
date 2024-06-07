@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags: 
-      - *
+      - '*'
     paths:
       - http-wasm.gr
       - plugin.gr
@@ -24,42 +24,37 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    -
-      name: Do Checkout
+    - name: Checkout Repository
       uses: actions/checkout@v4
-    - 
-      name: Allow `git`
+
+    - name: Set up Git
       run: |
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-    -
-      name: Install Grain
+
+    - name: Install Grain
       run: |
         sudo curl -L --output /usr/local/bin/grain https://github.com/grain-lang/grain/releases/download/grain-v0.6.3/grain-linux-x64
         sudo chmod +x /usr/local/bin/grain
-    -
-      name: Install WABT
-      run: sudo apt-get install -y wabt 
-    -
-      name: Build WASM files
+
+    - name: Install WABT
+      run: sudo apt-get install -y wabt
+
+    - name: Build WASM files
       run: |
         make clean
         make
-    -
-      name: Commit WASM files
+
+    - name: Commit WASM files
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        echo this is always problematic...
-        git status
-        git pull
+        git pull origin main
         git config advice.addIgnoredFile false
-        echo adding plugin.wasm to git
         git add ./plugin.wasm
-        echo MAYBE commit plugin.wasm to git
         git diff --quiet && git diff --staged --quiet || git commit -m "Update WASM from build [${{ github.workflow }}]"
-        echo done with commit, now push
         git push origin main
+
     - name: Save Build Artifacts
       uses: actions/upload-artifact@v4
       with:
