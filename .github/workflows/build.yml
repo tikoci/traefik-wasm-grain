@@ -53,6 +53,7 @@ jobs:
         git checkout main
         git config advice.addIgnoredFile false
         git add ./plugin.wasm
+        git add ./http-wasm.wasm
         git diff --quiet && git diff --staged --quiet || git commit -m "Update WASM from build [${{ github.workflow }}]"
         git push origin main
 
