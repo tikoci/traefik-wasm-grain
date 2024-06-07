@@ -1,0 +1,7 @@
+displayName: traefik-wasm-grain
+type: middleware
+runtime: wasm
+summary: Experimental plugin using WASM and grain-lang.org, directly using http-wasm ABI
+testData:
+  Headers:
+    Foo: Bar

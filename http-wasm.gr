@@ -1,0 +1,389 @@
+module HttpWasm
+
+from "runtime/unsafe/wasmi32" include WasmI32
+from "runtime/unsafe/wasmi64" include WasmI64
+from "runtime/unsafe/memory" include Memory
+from "runtime/dataStructures" include DataStructures as DS
+from "runtime/unsafe/conv" include Conv
+from "runtime/numberUtils" include NumberUtils
+from "runtime/debugPrint" include DebugPrint
+from "uri" include Uri
+from "runtime/string" include String as StringRuntime
+from "json" include Json
+from "string" include String
+from "result" include Result
+from "option" include Option
+from "json" include Json
+from "marshal" include Marshal
+from "map" include Map
+from "bytes" include Bytes
+from "stack" include Stack
+from "list" include List
+from "queue" include Queue
+
+
+/*** http-wasm ABI ***/
+provide foreign wasm log:
+  (WasmI32, WasmI32, WasmI32) => Void as _log from "http_handler"
+provide foreign wasm get_config:
+  (WasmI32, WasmI32) => WasmI32 as _getConfig from "http_handler"
+provide foreign wasm enable_features:
+  WasmI32 => WasmI32 as _enableFeatures from "http_handler"
+provide foreign wasm log_enabled:
+  WasmI32 => WasmI32 as _logEnabled from "http_handler"
+provide foreign wasm get_header_names:
+  (WasmI32, WasmI32, WasmI32) => WasmI64 as _getHeaderNames from "http_handler"
+provide foreign wasm get_header_values:
+  (WasmI32, WasmI32, WasmI32, WasmI32, WasmI32) => WasmI64 as _getHeaderValues from "http_handler"
+provide foreign wasm set_header_value:
+  (WasmI32, WasmI32, WasmI32, WasmI32, WasmI32) => Void as _setHeaderValue from "http_handler"
+provide foreign wasm add_header_value:
+  (WasmI32, WasmI32, WasmI32, WasmI32, WasmI32) => Void as _addHeaderValue from "http_handler"
+provide foreign wasm remove_header:
+  (WasmI32, WasmI32, WasmI32) => Void as _removeHeader from "http_handler"
+provide foreign wasm read_body:
+  (WasmI32, WasmI32, WasmI32) => WasmI64 as _readBody from "http_handler"
+provide foreign wasm write_body:
+  (WasmI32, WasmI32, WasmI32) => Void as _writeBody from "http_handler"
+provide foreign wasm get_method:
+  (WasmI32, WasmI32) => WasmI32 as _getMethod from "http_handler"
+provide foreign wasm set_method:
+  (WasmI32, WasmI32) => Void as _setMethod from "http_handler"
+provide foreign wasm get_uri:
+  (WasmI32, WasmI32) => WasmI32 as _getUri from "http_handler"
+provide foreign wasm set_uri:
+  (WasmI32, WasmI32) => Void as _setUri from "http_handler"
+provide foreign wasm get_protocol_version:
+  (WasmI32, WasmI32) => WasmI32 as _getProtocolVersion from "http_handler"
+provide foreign wasm get_source_addr:
+  (WasmI32, WasmI32) => WasmI32 as _getSourceAddr from "http_handler"
+provide foreign wasm get_status_code:
+  () => WasmI32 as _getStatusCode from "http_handler"
+provide foreign wasm set_status_code:
+  WasmI32 => Void as _setStatusCode from "http_handler"
+
+
+provide enum LogLevel {
+  Debug,
+  Info,
+  Warn,
+  Err,
+}
+
+provide enum HeaderKind {
+  RequestHeader,
+  ResponseHeader,
+}
+
+provide enum UriEncoding {
+  Raw,
+}
+
+provide record Request {
+  method: String,
+  path: String,
+  headers: List<String>,
+  sourceAddr: String,
+  protocolVersion: String,
+}
+
+provide record Response {
+  headers: List<String>,
+}
+
+provide type RequestHandler = Request => Bool
+provide type ResponseHandler = Response => Void
+
+@unsafe
+provide let log = (level: LogLevel, msg: String) => {
+  use WasmI32.{ (+) }
+
+  let logLevel = match (level) {
+    Debug => -1n,
+    Info => 0n,
+    Warn => 1n,
+    Err => 2n,
+  }
+  let namePtr = WasmI32.fromGrain(msg)
+  let nameLen = WasmI32.load(namePtr, 4n)
+  _log(logLevel, namePtr + 8n, nameLen) 
+  void
+}
+
+@unsafe
+provide let getConfig = () => {
+  use WasmI32.{ (+) }
+  let lenbuf = _getConfig(0n, 0n)
+  let strbuf = DS.allocateString(lenbuf)
+  let len = _getConfig(strbuf + 8n, lenbuf)
+  // _log(-1n, strbuf + 8n, len) // debug use
+  WasmI32.toGrain(strbuf): String
+}
+
+@unsafe
+provide let getMethod = () => {
+  use WasmI32.{ (+) }
+  let lenbuf = _getMethod(0n, 0n)
+  let strbuf = DS.allocateString(lenbuf)
+  let len = _getMethod(strbuf + 8n, lenbuf)
+  // _log(-1n, strbuf + 8n, len) // debug use
+  WasmI32.toGrain(strbuf): String
+}
+
+@unsafe
+provide let getUri = (encoding: UriEncoding=Raw) => {
+  use WasmI32.{ (+) }
+  let lenbuf = _getUri(0n, 0n)
+  let strbuf = DS.allocateString(lenbuf)
+  let len = _getUri(strbuf + 8n, lenbuf)
+  // _log(-1n, strbuf + 8n, len) // debug use
+  WasmI32.toGrain(strbuf): String
+}
+
+@unsafe
+provide let getProtocolVersion = () => {
+  use WasmI32.{ (+) }
+  let lenbuf = _getProtocolVersion(0n, 0n)
+  let strbuf = DS.allocateString(lenbuf)
+  let len = _getProtocolVersion(strbuf + 8n, lenbuf)
+  // _log(-1n, strbuf + 8n, len) // debug use
+  WasmI32.toGrain(strbuf): String
+}
+
+@unsafe
+provide let getSourceAddr = () => {
+  use WasmI32.{ (+) }
+  let lenbuf = _getSourceAddr(0n, 0n)
+  let strbuf = DS.allocateString(lenbuf)
+  let len = _getSourceAddr(strbuf + 8n, lenbuf)
+  // _log(-1n, strbuf + 8n, len) // debug use
+  WasmI32.toGrain(strbuf): String
+}
+
+@unsafe
+provide let getHeaderNames = (headerKind: HeaderKind) => {
+  use WasmI32.{ (+), (-), (<), (>), (<) }
+  use WasmI64.{ (>>) }
+
+  // convert enum to i32
+  let kind = match (headerKind) {
+    RequestHeader => 0n,
+    ResponseHeader => 1n,
+  }
+
+  // figure out length of headers
+  let lenmem = WasmI32.wrapI64(_getHeaderNames(kind, 0n, 0n))
+
+  // alloc memory for null-seperated list (which will be parsed)
+  let strbuf = Memory.malloc(lenmem) //DS.allocateBytes(lenbuf)
+
+  // get null-terminated headers
+  let leni64 = _getHeaderNames(kind, strbuf, lenmem)
+  let len = WasmI32.wrapI64(leni64)
+  let lenheader = WasmI32.wrapI64(leni64 >> 32N)
+
+  // parse for \0 and add found header to a stack
+  let headers = Stack.make()
+  let mut last = 0n
+  for (let mut i = 0n; i < len; i += 1n) {
+    let pos = strbuf + i
+
+    // only if found null \0, do something
+    if (WasmI32.eqz(WasmI32.load8U(pos, 0n))) {
+      let headlen = i - last
+
+      // now we allocate a Grain string to store header found
+      let headmem = DS.allocateString(headlen)
+      Memory.copy(headmem + 8n, strbuf + last, headlen)
+
+      // build a grain strings from it, and push grain stack
+      let grainStr = WasmI32.toGrain(headmem): String
+      Stack.push(grainStr, headers)
+      last = i + 1n
+    }
+  }
+
+  // now free out memory used for the all header string just parsed
+  Memory.free(strbuf)
+
+  // finally, convert the stack to more friendly list.
+  List.init(Stack.size(headers), e => match (Stack.pop(headers)) {
+    Some(val) => val,
+    _ => "",
+  }): List<String>
+}
+
+@unsafe
+provide let getHeaderValues = (headerKind: HeaderKind, name: String) => {
+  use WasmI32.{ (+), (-) }
+  use WasmI64.{ (>>) }
+
+  // convert enum to i32
+  let kind = match (headerKind) {
+    RequestHeader => 0n,
+    ResponseHeader => 1n,
+  }
+
+  // get native ptr to grain inputs
+  let namePtr = WasmI32.fromGrain(name)
+  let nameLen = WasmI32.load(namePtr, 4n)
+
+  // _log(-1n, namePtr + 8n, nameLen) // debug use
+
+  // figure out length of headers
+  let rawLength = _getHeaderValues(kind, namePtr + 8n, nameLen, 0n, 0n)
+  let bufLen = WasmI32.wrapI64(rawLength)
+  let elemLen = WasmI32.wrapI64(rawLength >> 32N)
+
+  // early return if size == 0
+  if (WasmI32.eqz(elemLen) || WasmI32.eqz(bufLen)) {
+    return ""
+  }
+
+  // get memory to store values
+  let grainStrMem = DS.allocateString(bufLen)
+  let ptrStr = grainStrMem + 8n
+
+  // make http-wasm call to fill string buffer with header
+  let newRawLength = _getHeaderValues(
+    kind,
+    namePtr + 8n,
+    nameLen,
+    ptrStr,
+    bufLen
+  )
+  let newBufLen = WasmI32.wrapI64(newRawLength)
+  let newElemLen = WasmI32.wrapI64(newRawLength >> 32N)
+
+  // _log(2n, grainStrMem + 8n, newBufLen) // debug use
+
+  let grainStr = WasmI32.toGrain(grainStrMem): String
+  return grainStr
+}
+
+@unsafe
+provide let setHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
+  use WasmI32.{(+)}
+
+  let kind = match (headerKind) {
+    RequestHeader => 0n,
+    ResponseHeader => 1n,
+  }
+
+  let namePtr = WasmI32.fromGrain(name)
+  let nameLen = WasmI32.load(namePtr, 4n)
+  let valuePtr = WasmI32.fromGrain(value)
+  let valueLen = WasmI32.load(valuePtr, 4n)
+
+  //_log(-1n, namePtr + 8n, nameLen)   
+  _setHeaderValue(kind, (namePtr + 8n), nameLen, (valuePtr + 8n), valueLen)
+  void
+}
+
+
+@unsafe
+provide let addHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
+  use WasmI32.{(+)}
+
+  let kind = match (headerKind) {
+    RequestHeader => 0n,
+    ResponseHeader => 1n,
+  }
+
+  let namePtr = WasmI32.fromGrain(name)
+  let nameLen = WasmI32.load(namePtr, 4n)
+  let valuePtr = WasmI32.fromGrain(value)
+  let valueLen = WasmI32.load(valuePtr, 4n)
+
+  //_log(-1n, namePtr + 8n, nameLen)   
+  _addHeaderValue(kind, (namePtr + 8n), nameLen, (valuePtr + 8n), valueLen)
+  void
+}
+
+
+
+@unsafe
+provide let getStatusCode = () => {
+  let statusCode = _getStatusCode()
+  Conv.toInt32(statusCode)
+}
+
+provide let hostConfig = match (Json.parse(getConfig())) {
+  Ok(conf) => conf,
+  _ => JsonNull
+}
+
+let defaultRequestHandler = (req: Request) => {
+  // log(Debug, "hello world") // debug use
+  true
+}
+provide let mut requestHandlers = List.init(1, n => defaultRequestHandler)
+
+let defaultResponseHandler = (resp: Response) => {
+  // log(Info, "grain says hi world") // debug use
+  void
+}
+provide let mut responseHandlers = List.init(1, n => defaultResponseHandler)
+
+provide let registerRequestHandler = (fn: RequestHandler) =>
+  requestHandlers = List.insert(
+    List.length(requestHandlers),
+    fn,
+    requestHandlers
+  )
+
+
+provide let registerResponseHandler = (fn: ResponseHandler) =>
+  responseHandlers = List.insert(
+    List.length(responseHandlers),
+    fn,
+    responseHandlers
+  )
+
+// special case, traefik's plugin validater checks "testData" if header is added
+registerRequestHandler(req => match (match (hostConfig) {
+  JsonObject([(root, JsonObject([(key, JsonString(value))]))]) => 
+    Ok((key, value)),
+    _ => Err("no config value found"),
+  }) {
+  Ok((key, value)) => {
+    addHeaderValue(ResponseHeader, key, value)
+    log(Debug, String.concat("special case, add response header: ", key))
+    true
+  },
+  _ => true,
+})
+
+
+@unsafe
+provide let handle_request = () => {
+  log(Debug, "wasm-grain plugin start at handle_request")
+  
+  let next = List.every(
+    onRequest =>
+      onRequest(
+        {
+          method: getMethod(),
+          path: getUri(),
+          headers: getHeaderNames(RequestHeader),
+          sourceAddr: getSourceAddr(),
+          protocolVersion: getProtocolVersion(),
+        }
+      ),
+    requestHandlers
+  )
+  match (next) {
+    true => 1N,
+    false => 0N
+  }
+}
+
+@unsafe
+provide let handle_response = (high: WasmI32, low: WasmI32) => {
+  List.forEach(
+    onResponse => onResponse({ headers: getHeaderNames(ResponseHeader) }),
+    responseHandlers
+  )
+  log(Debug, "wasm-grain plugin done after handle_response")
+  void
+}

@@ -1,0 +1,46 @@
+module TraefikGrainPlugin
+
+// http-wasm grain-lang implementation
+from "./http-wasm.gr" include HttpWasm
+
+use HttpWasm.*
+// required: low-level handler must be "provide" from main WASM module to be found
+provide { handle_request, handle_response }
+
+from "list" include List
+from "map" include Map
+from "string" include String
+from "json" include Json
+
+// sample "request handler" in grain
+registerRequestHandler((req: Request) => {
+  // this use Grain's pattern match to "do stuff" with a HTTP request
+  match (req) {
+
+    { method, path, _ } when method == "GET" && path == "/" =>
+      log(Debug, "hey, that's the home page"),
+    
+    { method, _, headers, _} when method == "GET" || method =="POST" => {
+      addHeaderValue(ResponseHeader, "X-Traefik-Plugin", "TraefikGrainPlugin")
+      log(Info, String.concat("add response X-Traefik-Plugin header to mark processing: ", getHeaderValues(ResponseHeader, "X-Traefik-Plugin")))
+      },
+    
+    { _, _, _, sourceAddr, _ } => 
+      log(Debug, String.concat("request coming from: ", sourceAddr)),
+    
+    { _, _, _, _, protocolVersion } =>
+      log(Debug, String.concat("using: ", protocolVersion)),
+    
+    _ => log(Info, "you're no match"),
+  
+  }  
+  // ALL request handlers must return true to continue processing pipeline
+  true // false mean stop processing the ENTIRE request, not just this plugin
+})
+
+
+// response can be trapped, less usefule and more rules apply on what's allowed
+registerResponseHandler((resp: Response) => {
+  log(Info, "grain says goodbye")
+  void
+})
