@@ -1,0 +1,4 @@
+# Grain is Go for Traefik
+*.gr linguist-language=go
+
+# see https://github.com/github-linguist/linguist/blob/master/docs/overrides.md
