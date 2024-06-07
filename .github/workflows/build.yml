@@ -64,11 +64,10 @@ jobs:
         git status
         git pull
         git config advice.addIgnoredFile false
-        echo "git add finds..."
-        find ./plugins -name 'plugin.wasm' | xargs git add
-        find ./plugins -name 'plugin.wat' | xargs git add
-        echo "maybe git commit"
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update WASM from build [${{ github.workflow }}]"
+        git add plugin.wasm
+        git commit -m 'update wasm from build'
+        #echo "maybe git commit"
+        #git diff --quiet && git diff --staged --quiet || git commit -m "Update WASM from build [${{ github.workflow }}]"
         echo "git push..."
         git push origin main
     - name: Save Build Artifacts
