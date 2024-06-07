@@ -60,3 +60,13 @@ jobs:
       with:
         name: build-results
         path: "./*"
+
+    - name: Save Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-traefik-wasm-plugin
+        path: |
+          .traefik.yml
+          plugin.wasm
+          icon.png
+          README.md
