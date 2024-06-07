@@ -46,11 +46,15 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        echo this is always problematic...
         git status
         git pull
         git config advice.addIgnoredFile false
-        git add plugin.wasm
+        echo adding plugin.wasm to git
+        git add ./plugin.wasm
+        echo now commit plugin.wasm to git
         git commit -m 'update wasm from build'
+        echo done with commit, now push
         git push origin main
     - name: Save Build Artifacts
       uses: actions/upload-artifact@v4
