@@ -47,11 +47,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git fetch origin
-        git checkout main
-        git config advice.addIgnoredFile false
         git add ./plugin.wasm
         git diff --quiet && git diff --staged --quiet || git commit -m "Update WASM from build [${{ github.workflow }}]"
-        git push origin main
+        git push origin
 
     - name: Save Build Artifacts
       uses: actions/upload-artifact@v4
