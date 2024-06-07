@@ -3,7 +3,7 @@ name: build-on-command
 on:
   workflow_dispatch:
   push:
-    tag: 
+    tags: 
       - *
     paths:
       - http-wasm.gr
