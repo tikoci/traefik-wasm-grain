@@ -12,9 +12,6 @@ on:
       - icon.png
       - .traefik.yml
 
-env:
-  PLATFORMS: linux/arm/v7,linux/arm64,linux/amd64
-
 permissions:
   packages: write
   contents: write
