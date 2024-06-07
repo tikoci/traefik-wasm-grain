@@ -1,10 +1,19 @@
+/**
+ * Experimental Traefik plugin using WASM and Grain.  
+ * This is the "main" code for the plugin, and where any operations can be preformed on HTTP requests or responses. 
+ * Examples here include using Grain's [Pattern Matching](https://grain-lang.org/docs/guide/pattern_matching) on requests to take some actions.
+ *
+ * > Traefik invokes a WASM plugin by call `handle_request` and `handle_response` exports. 
+ * > Since these require unsafe pointers, `HttpWasm` module wraps them.  So Grain-based "callbacks" can use `registerRequestHandler` or `registerResponseHandler` to avoid needing unsafe code.   
+ * > But for Traefik's [http-wasm](https://http-wasm.io/) host to find them, the `plugin.gr` must expose these, which just uses the implemention in `WasmHttp` to call any registered handlers here.
+ */
+
 module TraefikGrainPlugin
 
-// http-wasm grain-lang implementation
+// include grain-lang http-wasm implementation/wrappers
 from "./http-wasm.gr" include HttpWasm
-
+// required: low-level handler must be "provide" from "main" WASM module (`plugin.wasm`) to be found
 use HttpWasm.*
-// required: low-level handler must be "provide" from main WASM module to be found
 provide { handle_request, handle_response }
 
 from "list" include List

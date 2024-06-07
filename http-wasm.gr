@@ -1,4 +1,9 @@
+/**
+ * Grain API for [http-wasm ABI](https://http-wasm.io/http-handler-abi/)
+ */
 module HttpWasm
+
+from "./http-wasm-abi.gr" include HttpWasmAbi
 
 from "runtime/unsafe/wasmi32" include WasmI32
 from "runtime/unsafe/wasmi64" include WasmI64
@@ -21,63 +26,8 @@ from "stack" include Stack
 from "list" include List
 from "queue" include Queue
 
+use HttpWasmAbi.*
 
-/*** http-wasm ABI ***/
-provide foreign wasm log:
-  (WasmI32, WasmI32, WasmI32) => Void as _log from "http_handler"
-provide foreign wasm get_config:
-  (WasmI32, WasmI32) => WasmI32 as _getConfig from "http_handler"
-provide foreign wasm enable_features:
-  WasmI32 => WasmI32 as _enableFeatures from "http_handler"
-provide foreign wasm log_enabled:
-  WasmI32 => WasmI32 as _logEnabled from "http_handler"
-provide foreign wasm get_header_names:
-  (WasmI32, WasmI32, WasmI32) => WasmI64 as _getHeaderNames from "http_handler"
-provide foreign wasm get_header_values:
-  (WasmI32, WasmI32, WasmI32, WasmI32, WasmI32) => WasmI64 as _getHeaderValues from "http_handler"
-provide foreign wasm set_header_value:
-  (WasmI32, WasmI32, WasmI32, WasmI32, WasmI32) => Void as _setHeaderValue from "http_handler"
-provide foreign wasm add_header_value:
-  (WasmI32, WasmI32, WasmI32, WasmI32, WasmI32) => Void as _addHeaderValue from "http_handler"
-provide foreign wasm remove_header:
-  (WasmI32, WasmI32, WasmI32) => Void as _removeHeader from "http_handler"
-provide foreign wasm read_body:
-  (WasmI32, WasmI32, WasmI32) => WasmI64 as _readBody from "http_handler"
-provide foreign wasm write_body:
-  (WasmI32, WasmI32, WasmI32) => Void as _writeBody from "http_handler"
-provide foreign wasm get_method:
-  (WasmI32, WasmI32) => WasmI32 as _getMethod from "http_handler"
-provide foreign wasm set_method:
-  (WasmI32, WasmI32) => Void as _setMethod from "http_handler"
-provide foreign wasm get_uri:
-  (WasmI32, WasmI32) => WasmI32 as _getUri from "http_handler"
-provide foreign wasm set_uri:
-  (WasmI32, WasmI32) => Void as _setUri from "http_handler"
-provide foreign wasm get_protocol_version:
-  (WasmI32, WasmI32) => WasmI32 as _getProtocolVersion from "http_handler"
-provide foreign wasm get_source_addr:
-  (WasmI32, WasmI32) => WasmI32 as _getSourceAddr from "http_handler"
-provide foreign wasm get_status_code:
-  () => WasmI32 as _getStatusCode from "http_handler"
-provide foreign wasm set_status_code:
-  WasmI32 => Void as _setStatusCode from "http_handler"
-
-
-provide enum LogLevel {
-  Debug,
-  Info,
-  Warn,
-  Err,
-}
-
-provide enum HeaderKind {
-  RequestHeader,
-  ResponseHeader,
-}
-
-provide enum UriEncoding {
-  Raw,
-}
 
 provide record Request {
   method: String,
@@ -93,6 +43,28 @@ provide record Response {
 
 provide type RequestHandler = Request => Bool
 provide type ResponseHandler = Response => Void
+
+
+let defaultRequestHandler = (req: Request) => {
+  // log(Debug, "hello world") // debug use
+  true
+}
+
+let defaultResponseHandler = (resp: Response) => {
+  // log(Info, "grain says hi world") // debug use
+  void
+}
+
+let mut requestHandlers = List.init(1, n => defaultRequestHandler)
+let mut responseHandlers = List.init(1, n => defaultResponseHandler)
+
+
+provide enum LogLevel {
+  Debug,
+  Info,
+  Warn,
+  Err,
+}
 
 @unsafe
 provide let log = (level: LogLevel, msg: String) => {
@@ -110,6 +82,8 @@ provide let log = (level: LogLevel, msg: String) => {
   void
 }
 
+
+
 @unsafe
 provide let getConfig = () => {
   use WasmI32.{ (+) }
@@ -119,6 +93,17 @@ provide let getConfig = () => {
   // _log(-1n, strbuf + 8n, len) // debug use
   WasmI32.toGrain(strbuf): String
 }
+
+
+/**
+ * Middleware configuration exposed from Traefik, represented as Grain Json.* types in `hostConfig`.
+ */
+provide let hostConfig = match (Json.parse(getConfig())) {
+  Ok(conf) => conf,
+  _ => JsonNull
+}
+
+
 
 @unsafe
 provide let getMethod = () => {
@@ -131,7 +116,7 @@ provide let getMethod = () => {
 }
 
 @unsafe
-provide let getUri = (encoding: UriEncoding=Raw) => {
+provide let getUri = () => {
   use WasmI32.{ (+) }
   let lenbuf = _getUri(0n, 0n)
   let strbuf = DS.allocateString(lenbuf)
@@ -158,6 +143,11 @@ provide let getSourceAddr = () => {
   let len = _getSourceAddr(strbuf + 8n, lenbuf)
   // _log(-1n, strbuf + 8n, len) // debug use
   WasmI32.toGrain(strbuf): String
+}
+
+provide enum HeaderKind {
+  RequestHeader,
+  ResponseHeader,
 }
 
 @unsafe
@@ -261,26 +251,10 @@ provide let getHeaderValues = (headerKind: HeaderKind, name: String) => {
   return grainStr
 }
 
-@unsafe
-provide let setHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
-  use WasmI32.{(+)}
-
-  let kind = match (headerKind) {
-    RequestHeader => 0n,
-    ResponseHeader => 1n,
-  }
-
-  let namePtr = WasmI32.fromGrain(name)
-  let nameLen = WasmI32.load(namePtr, 4n)
-  let valuePtr = WasmI32.fromGrain(value)
-  let valueLen = WasmI32.load(valuePtr, 4n)
-
-  //_log(-1n, namePtr + 8n, nameLen)   
-  _setHeaderValue(kind, (namePtr + 8n), nameLen, (valuePtr + 8n), valueLen)
-  void
-}
-
-
+/**
+ * Note: plugin will panic if `addHeaderValue()` is called on existing header.
+ *   Check `getHeaderName()` if header already exists _before_ call `addHeaderValue()`. 
+ */
 @unsafe
 provide let addHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
   use WasmI32.{(+)}
@@ -300,30 +274,38 @@ provide let addHeaderValue = (headerKind: HeaderKind, name: String, value: Strin
   void
 }
 
+/**
+ * Note: plugin will panic if `setHeaderValue()` is called on non-existing header.
+ *   Check `getHeaderName()` to make sure header exists _before_ call `setHeaderValue()`. 
+ */
+@unsafe
+provide let setHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
+  use WasmI32.{(+)}
 
+  let kind = match (headerKind) {
+    RequestHeader => 0n,
+    ResponseHeader => 1n,
+  }
 
+  let namePtr = WasmI32.fromGrain(name)
+  let nameLen = WasmI32.load(namePtr, 4n)
+  let valuePtr = WasmI32.fromGrain(value)
+  let valueLen = WasmI32.load(valuePtr, 4n)
+
+  //_log(-1n, namePtr + 8n, nameLen)   
+  _setHeaderValue(kind, (namePtr + 8n), nameLen, (valuePtr + 8n), valueLen)
+  void
+}
+
+/**
+ * **Response Only** 
+ * Note: Will panic if status code has not be previously set.
+ */
 @unsafe
 provide let getStatusCode = () => {
   let statusCode = _getStatusCode()
   Conv.toInt32(statusCode)
 }
-
-provide let hostConfig = match (Json.parse(getConfig())) {
-  Ok(conf) => conf,
-  _ => JsonNull
-}
-
-let defaultRequestHandler = (req: Request) => {
-  // log(Debug, "hello world") // debug use
-  true
-}
-provide let mut requestHandlers = List.init(1, n => defaultRequestHandler)
-
-let defaultResponseHandler = (resp: Response) => {
-  // log(Info, "grain says hi world") // debug use
-  void
-}
-provide let mut responseHandlers = List.init(1, n => defaultResponseHandler)
 
 provide let registerRequestHandler = (fn: RequestHandler) =>
   requestHandlers = List.insert(
