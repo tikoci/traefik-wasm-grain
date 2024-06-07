@@ -2,15 +2,15 @@ name: build-on-command
 
 on:
   workflow_dispatch:
-  push:
-    tags: 
-      - '*'
-    paths:
-      - http-wasm.gr
-      - plugin.gr
-      - Makefile
-      - icon.png
-      - .traefik.yml
+  #push:
+  #  tags: 
+  #    - '*'
+  #  paths:
+  #    - http-wasm.gr
+  #    - plugin.gr
+  #    - Makefile
+  #    - icon.png
+  #    - .traefik.yml
 
 permissions:
   packages: write
