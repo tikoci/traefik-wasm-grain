@@ -1,6 +1,8 @@
 displayName: traefik-wasm-grain
 type: middleware
+import: github.com/tikoci/traefik-wasm-grain
 runtime: wasm
+iconPath: icon.png
 summary: Experimental plugin using WASM and grain-lang.org, directly using http-wasm ABI
 testData:
   Headers:
