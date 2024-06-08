@@ -76,13 +76,24 @@ log : (level: LogLevel, msg: String) => Void
 getConfig : () => String
 ```
 
+Get middleware configuration exposed from Traefik as string containing unparsed json
+
+### HttpWasm.**hostJson**
+
+```grain
+hostJson : Json.Json
+```
+
+Middleware configuration exposed from Traefik, as Grain Json.* types
+
 ### HttpWasm.**hostConfig**
 
 ```grain
-hostConfig : Json.Json
+hostConfig : Map.Map<String, String>
 ```
 
-Middleware configuration exposed from Traefik, represented as Grain Json.* types in `hostConfig`.
+Middleware configuration exposed from Traefik, as Grain Json.* types.
+This can be used like: `Map.get("Headers.Foo", hostConfig)`
 
 ### HttpWasm.**getMethod**
 
