@@ -1,0 +1,110 @@
+
+module Test 
+
+from "json" include Json
+from "string" include String
+from "result" include Result
+from "option" include Option
+//from "marshal" include Marshal
+from "map" include Map
+//from "bytes" include Bytes
+from "stack" include Stack
+from "list" include List
+from "queue" include Queue
+from "runtime/string" include String as StringRuntime
+
+    
+provide let jsonObjectToMap = json => {
+
+let map = Map.make()
+let toParentString = parent => match (parent) {
+  p when parent != "" => parent ++ ".",
+  _ => "",
+}
+
+let rec recurseJsonObject = (json, parent) => match (json) {
+  (key, Json.JsonArray(list)) =>
+    List.forEachi((item, index) => match (item) {
+      Json.JsonObject(list) =>
+        List.forEach(
+          item => recurseJsonObject(item, key ++ "." ++ toString(index)),
+          list
+        ),
+      Json.JsonNumber(num) =>
+        Map.set(
+          toParentString(parent) ++ key ++ "." ++ toString(index),
+          StringRuntime.toString(num),
+          map
+        ),
+      Json.JsonString(str) =>
+        Map.set(
+          toParentString(parent) ++ key ++ "." ++ toString(index),
+          str,
+          map
+        ),
+      Json.JsonBoolean(bool) =>
+        Map.set(
+          toParentString(parent) ++ key ++ "." ++ toString(index),
+          StringRuntime.toString(bool),
+          map
+        ),
+      Json.JsonNull =>
+        Map.set(
+          toParentString(parent) ++ key ++ "." ++ toString(index),
+          "",
+          map
+        ),
+      Json.JsonArray(list) =>
+        List.forEachi(
+          (item, indexp) =>
+            Map.set(
+              toParentString(parent) ++
+                key ++
+                "." ++
+                toString(index) ++
+                "." ++
+                toString(indexp),
+              StringRuntime.toString(item),
+              map
+            ),
+          list
+        ),
+    }, list),
+  (key, Json.JsonObject(obj)) =>
+    List.forEach(e => recurseJsonObject(e, key), obj),
+  (key, Json.JsonNumber(jnum: Number)) =>
+    Map.set(toParentString(parent) ++ key, StringRuntime.toString(jnum), map),
+  (key, Json.JsonString(str)) =>
+    Map.set(toParentString(parent) ++ key, str, map),
+  (key, Json.JsonNull) => Map.set(toParentString(parent) ++ key, "", map),
+  (key, Json.JsonBoolean(bool)) =>
+    Map.set(
+      toParentString(parent) ++ "." ++ key,
+      StringRuntime.toString(bool),
+      map
+    ),
+}
+
+match (json) {
+  Ok(Json.JsonObject(json)) => List.forEach(e => recurseJsonObject(e, ""), json),
+  _ => print(" !!! bad json"),
+}
+return map
+}
+
+
+let json = Json.parse(
+  "{ \"test\": [ 1, [ 33, \"insider\"], true, 4.3534334, \"3.14\" ], \"actions\": [ {\"currency\":\"€\",\"price\":99.99}, {\"currency\":\"$\",\"price\":105.99}], \"log\": { \"debug\": \"true\" } }"
+)
+// Ok(JsonObject([("actions", JsonArray([JsonObject([("currency", JsonString("€")), ("price", JsonNumber(99.99))]), JsonObject([("currency", JsonString("$")), ("price", JsonNumber(105.99))])])), ("log", JsonObject([("debug", JsonString("true"))]))]))
+
+print(json)
+let map = jsonObjectToMap(json)
+
+print(Map.get("actions.1.price", map))
+print(match (Map.get("log.debug", map)) {
+  Some(x) => x,
+  Some(x) => x,
+  _ => "",
+})
+

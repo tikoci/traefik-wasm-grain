@@ -4,6 +4,7 @@
 module HttpWasm
 
 from "./http-wasm-abi.gr" include HttpWasmAbi
+from "./json-to.gr" include JsonTo
 
 from "runtime/unsafe/wasmi32" include WasmI32
 from "runtime/unsafe/wasmi64" include WasmI64
@@ -83,7 +84,9 @@ provide let log = (level: LogLevel, msg: String) => {
 }
 
 
-
+/**
+ * Get middleware configuration exposed from Traefik as string containing unparsed json 
+ */
 @unsafe
 provide let getConfig = () => {
   use WasmI32.{ (+) }
@@ -94,15 +97,19 @@ provide let getConfig = () => {
   WasmI32.toGrain(strbuf): String
 }
 
-
 /**
- * Middleware configuration exposed from Traefik, represented as Grain Json.* types in `hostConfig`.
+ * Middleware configuration exposed from Traefik, as Grain Json.* types
  */
-provide let hostConfig = match (Json.parse(getConfig())) {
+provide let hostJson = match (Json.parse(getConfig())) {
   Ok(conf) => conf,
   _ => JsonNull
 }
 
+/**
+ * Middleware configuration exposed from Traefik, as Grain Json.* types.
+ * This can be used like: `Map.get("Headers.Foo", hostConfig)`
+ */
+provide let hostConfig = JsonTo.map(hostJson)
 
 
 @unsafe
@@ -322,6 +329,7 @@ provide let registerResponseHandler = (fn: ResponseHandler) =>
     responseHandlers
   )
 
+/*
 // special case, traefik's plugin validater checks "testData" if header is added
 registerRequestHandler(req => match (match (hostConfig) {
   JsonObject([(root, JsonObject([(key, JsonString(value))]))]) => 
@@ -335,7 +343,7 @@ registerRequestHandler(req => match (match (hostConfig) {
   },
   _ => true,
 })
-
+*/
 
 @unsafe
 provide let handle_request = () => {
@@ -369,3 +377,6 @@ provide let handle_response = (high: WasmI32, low: WasmI32) => {
   log(Debug, "wasm-grain plugin done after handle_response")
   void
 }
+
+
+
