@@ -1,8 +1,8 @@
-displayName: traefik-wasm-grain
+displayName: Example WASM Plugin using Grain
 type: middleware
 runtime: wasm
 iconPath: icon.png
-summary: Experimental plugin using WASM and grain-lang.org, directly using http-wasm ABI
+summary: Experimental plugin using WASM and grain-lang.org, directly using http-wasm ABI. \#NoGo \#UnderConstruction 
 testData:
   addHeader:
     X-Traefik-Plugin: TraefikGrainPlugin 
