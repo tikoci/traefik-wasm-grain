@@ -1,0 +1,53 @@
+module PatternClassifier
+
+// three line below are needed to `HttpWasm`
+from "../../lib/http-wasm.gr" include HttpWasm
+use HttpWasm.*
+provide { handle_request, handle_response }
+
+// with Grain, the stdlib must be include'd explicitly
+from "regex" include Regex
+from "result" include Result
+
+/**
+  #### Regular Expressions
+
+  Grain supports regular expressions, and used in `match` by invoking operations from 
+  Grain's stdlib `Regex` type. 
+ */
+provide let reRestMethods = Result.unwrap(Regex.make("(GET|POST|PUT|PATCH|DELETE)"))
+
+/**
+ 
+  #### Request Handler using `match` and `Regex`
+
+   By separating the handler function from a call to `registerRequestHandler()`,
+   the handler logic can be exported using `provide`, and used by other Grain code via `from`.
+   For example, `handlerMethodClassification` below is used by the top-level [`plugin.gr`](../../plugin.gr) 
+*/
+provide let methods = (req: Request) => {
+  match (req) {
+    { method, path, _ } when method == "GET" && path == "/" =>
+      log(Debug, "processing GET request to homepage"),
+    { method, _ } when Regex.isMatch(reRestMethods, method) =>
+      log(Debug, "REST API method used"),
+    { method, _ } when method == "OPTIONS" =>
+      log(Debug, "Possible CORS usage"),
+    _  => void, // do nothing is "void", required because of "when" clause
+  }
+
+  // only one winner in a "match"...
+  //  so multiple pattern matchers can be used
+  match (req) {
+    { method, sourceAddr, protocolVersion, _ } =>
+      log(
+        Debug,
+        method ++ " from " ++ sourceAddr ++ " using " ++ protocolVersion
+      ),
+  }
+
+  // ALL request handlers MUST return true to continue processing pipeline
+  // with false meaning stop processing the ENTIRE request, not just this plugin
+  // i.e. we're middleware so our choice is to continue or stop
+  true
+}

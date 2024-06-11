@@ -10,7 +10,7 @@ from "map" include Map
 from "list" include List
 
 /**
- * Helper to convert JsonObject into a Map
+ * Helper to convert `JsonObject` into a `Map` with hierarchy "dotted paths" as keys.
  */
 provide let map = json => {
   let map = Map.make()
@@ -87,8 +87,9 @@ provide let map = json => {
     _ =>
       print("must be a JsonObject otherwise an empty config map is returned"),
   }
-  return map
+  map 
 }
+// { \"addHeader\": \"X-Traefik-Test\": \"Test Data", \"removeHeader\": "X-Traefik-Plugin" } "
 
 /*
 // Old Test Code 

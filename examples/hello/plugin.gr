@@ -1,0 +1,18 @@
+module HelloExample
+
+// 3 lines needed for `HttpWasm` plumbing
+from "../../lib/http-wasm.gr" include HttpWasm
+use HttpWasm.*
+provide { handle_request, handle_response }
+
+// add "hello world" to Traefik log at "info" level
+registerRequestHandler((resp: Request) => {
+  log(Info, "hello world")
+  true
+})
+
+// before response, after all request handlers are run, log something else
+registerResponseHandler((resp: Response) => {
+  log(Debug, "the end")
+  void
+})

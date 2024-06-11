@@ -1,4 +1,6 @@
 target
 .env
 *.wat
-http-wasm*.wasm
+lib/*.wasm
+examples/*/*.wasm
+*.zip

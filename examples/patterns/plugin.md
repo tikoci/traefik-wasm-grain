@@ -1,0 +1,38 @@
+---
+title: PatternsExample
+---
+
+  ## Matching HTTP data using Grain
+  
+  This example show using Grain [`match`](https://grain-lang.org/docs/guide/pattern_matching) and stdlib's [`Regex`](https://grain-lang.org/docs/stdlib/regex) 
+  as part of HTTP middleware processing. 
+
+  Each `RequestHandler` is provided a Grain `record` with the following shape to Grain's `match`:
+  `{ method, path, headers, sourceAddr, protocolVersion }`
+  which comes from the following from `HttpWasm` module:
+  ```
+    record Request {
+      method: String,
+      path: String,
+      headers: List<String>,
+      sourceAddr: String,
+      protocolVersion: String,
+    }
+  ```
+
+  See Grain docs on 
+  [Matching Record Types](https://grain-lang.org/docs/guide/pattern_matching#Matching-Record-Types) for more details.
+
+  Similar with for response handling, but only response headers are available, shape to `match` is just `{ headers }`:
+  ```
+  record Response {
+    headers: List<String>,
+  }
+  ```
+  
+
+  > Both `RequestHandler` and `ResponseHandler` can take actions after matching, like setting headers or altering status codes.
+  > The needed operations are available in available from the `HttpWasm` module.  In http-wasm ABI, the request handlers can 
+  > either accept or reject by returning `true` or `false`.
+  > A response handler can only alter some data since response is already in-flight.
+

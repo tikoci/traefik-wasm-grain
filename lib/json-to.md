@@ -12,5 +12,5 @@ Functions and constants included in the JsonTo module.
 map : (json: Json.Json) => Map.Map<String, String>
 ```
 
-Helper to convert JsonObject into a Map
+Helper to convert `JsonObject` into a `Map` with hierarchy "dotted paths" as keys.
 

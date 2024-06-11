@@ -1,4 +1,7 @@
-# Grain is Go for Traefik
+# Grain is Go for Traefik^
 *.gr linguist-language=go
 
-# see https://github.com/github-linguist/linguist/blob/master/docs/overrides.md
+# ^ needed since Traefik's Plugin Catalog looks for "lang:Go" to find plugins,
+#       see https://github.com/traefik/plugindemowasm/issues/6
+#   on the option, 
+#       see https://github.com/github-linguist/linguist/blob/master/docs/overrides.md

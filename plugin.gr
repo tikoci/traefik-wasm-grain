@@ -1,62 +1,86 @@
 /**
- * Experimental Traefik plugin using WASM and Grain.  
- * This is the "main" code for the plugin, and where any operations can be preformed on HTTP requests or responses. 
- * Examples here include using Grain's [Pattern Matching](https://grain-lang.org/docs/guide/pattern_matching) on requests to take some actions.
- *
- * > Traefik invokes a WASM plugin by call `handle_request` and `handle_response` exports. 
- * > Since these require unsafe pointers, `HttpWasm` module wraps them.  So Grain-based "callbacks" can use `registerRequestHandler` or `registerResponseHandler` to avoid needing unsafe code.   
- * > But for Traefik's [http-wasm](https://http-wasm.io/) host to find them, the `plugin.gr` must expose these, which just uses the implemention in `WasmHttp` to call any registered handlers here.
- */
+  Experimental Traefik plugin using WASM and Grain.  
+  This is the "main" code for the plugin, and where any operations can be preformed on HTTP requests or responses. 
+  Examples here include using Grain's [Pattern Matching](https://grain-lang.org/docs/guide/pattern_matching) on requests to take some actions.
+ 
+  > Traefik invokes a WASM plugin by call `handle_request` and `handle_response` exports. 
+  > Since these require unsafe pointers, `HttpWasm` module wraps them.  So Grain-based "callbacks" can use `registerRequestHandler` or `registerResponseHandler` to avoid needing unsafe code.   
+  > But for Traefik's [http-wasm](https://http-wasm.io/) host to find them, the `plugin.gr` must expose these, which just uses the implementation in `WasmHttp` to call any registered handlers here.
+*/
 module TraefikGrainPlugin
 
 // include grain-lang http-wasm implementation/wrappers
-from "./http-wasm.gr" include HttpWasm
-// required: low-level handler must be "provide" from "main" WASM module (`plugin.wasm`) to be found
+from "./lib/http-wasm.gr" include HttpWasm
 use HttpWasm.*
+// required: low-level handler must be "provide" from "main" WASM module (`plugin.wasm`) to be found
 provide { handle_request, handle_response }
 
+from "result" include Result
+from "option" include Option
 from "list" include List
 from "map" include Map
 from "string" include String
+from "number" include Number
+from "int64" include Int64
 from "json" include Json
+from "wasi/time" include Time
 
-// Sample "request_handler"'s in Grain
-// - Request is shaped: { method, path, headers, sourceAddr, protocolVersion }
-// - HttpWasm has operations like `log`, `setHeaderValue`, etc as actions
+
+/**
+ * Add new header with start time from WASI
+ */
+let addRequestTimestamp = (resp: Request) => {
+  enableFeatures([BufferResponse])
+  addHeaderValue(
+    ResponseHeader,
+    "X-Grain-Timestamp",
+    toString(Result.unwrap(Time.monotonicTime()))
+  )
+  true
+}
+registerRequestHandler(addRequestTimestamp)
+
+/**
+ * Example using middleware config & and to do something to time
+ */
 registerRequestHandler((req: Request) => {
-
-  // could be simple, like mark all requests process with a header
-  addHeaderValue(ResponseHeader, "X-Traefik-Plugin", "TraefikGrainPlugin")
-
-  // or using Grain's pattern matching with a HTTP request
-  match (req) {
-    { method, path, _ } when method == "GET" && path == "/" =>
-      log(Debug, "tell home page grain says hi"),
-    { method, path, _ } => void, // do nothing is "void", required because of "when" clause
+  match (getConfigItem("Headers.Foo")) {
+    Some(val) => addHeaderValue(ResponseHeader, "X-Foo", val),
+    None => void,
   }
-
-  // only one winner in a "match"...
-  //  so multuple pattern matchers can be used
-  match (req) {
-    { method, sourceAddr, protocolVersion, _ } =>
-      log(
-        Info,
-        method ++ " from " ++ sourceAddr ++ " using " ++ protocolVersion
-      ),
-  }
-
-  // ALL request handlers MUST return true to continue processing pipeline
-  // with false meaning stop processing the ENTIRE request, not just this plugin
-  // i.e. we're middleware so our choice is to continue or stop
   true
 })
 
-// "middleware" need some config to do useful stuff...
 
+/**
+ * Add another header, in a response handler, to record the "time taken"
+ * in both logs and in new header  
+ */
+let addResponseTimestamp = (resp: Response) => {
+  use Int64.{ (-) }
+  // get the timestamp add in above response handler as "start time"
+  let startTimeString = getHeaderValues(ResponseHeader, "X-Grain-Timestamp")
 
-
-// response can be trapped, less usefule and more rules apply on what's allowed
-registerResponseHandler((resp: Response) => {
-  log(Info, "grain says goodbye")
+  // convert to a Number type, since http-wasm only deals in strings
+  match (Number.parse(stripNulls(startTimeString))) {
+    Ok(startTime) => {
+      let diff = Result.unwrap(Time.realTime()) - Int64.fromNumber(startTime)
+      log(Info, getHeaderValues(ResponseHeader, "Grain Execution Time: " ++ toString(diff) ++ " ns"))
+      addHeaderValue(ResponseHeader, "X-Grain-Timing", toString(diff))
+      void
+    },
+    Err(err) => log(Warn, "issue get timing data using" ++ startTimeString ++ " got " ++ toString(err) ++ " from " ++ dumpCodePoints(startTimeString))
+  }
   void
-})
+}
+registerResponseHandler(addResponseTimestamp)
+
+/**
+ * To use another module with handler logic...
+ * The following one of some example code with a `provide` that 
+ * classifies HTTP method as a homepage, REST, or CORS-related.
+ * 
+ * > Commented out to avoid cluttering logs by default
+ */
+from "./examples/patterns/patterns.gr" include PatternClassifier
+//registerRequestHandler(PatternClassifier.methods)

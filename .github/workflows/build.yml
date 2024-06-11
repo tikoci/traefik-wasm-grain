@@ -52,6 +52,7 @@ jobs:
         git pull origin 
         git add ./plugin.wasm
         git add ./*.md
+        git add ./examples/*/*.md
         git diff --quiet && git diff --staged --quiet || git commit -m "Update WASM from build [${{ github.workflow }}]"
         git push origin
 

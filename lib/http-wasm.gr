@@ -1,5 +1,10 @@
 /**
- * Grain API for [http-wasm ABI](https://http-wasm.io/http-handler-abi/)
+ * ## Grain API for [http-wasm ABI](https://http-wasm.io/http-handler-abi/)
+ * 
+ * Implements WASM foreign binding from [`./http-wasm-abi.gr`](./http-wasm-abi.gr).
+ * Traefik plugin logic code can `include HttpWasm` to use native http-wasm functions,
+ * and register functions that will be called when http-wasm's `handle_request` or `handle_response`
+ * are called.
  */
 module HttpWasm
 
@@ -13,6 +18,7 @@ from "runtime/dataStructures" include DataStructures as DS
 from "runtime/unsafe/conv" include Conv
 from "runtime/numberUtils" include NumberUtils
 from "runtime/debugPrint" include DebugPrint
+from "uint32" include Uint32
 from "uri" include Uri
 from "runtime/string" include String as StringRuntime
 from "json" include Json
@@ -22,6 +28,7 @@ from "option" include Option
 from "json" include Json
 from "marshal" include Marshal
 from "map" include Map
+from "array" include Array
 from "bytes" include Bytes
 from "stack" include Stack
 from "list" include List
@@ -29,7 +36,9 @@ from "queue" include Queue
 
 use HttpWasmAbi.*
 
-
+/**
+  `Reguest` is provided as argument to any functions provided to `registerRequestHandler` 
+*/
 provide record Request {
   method: String,
   path: String,
@@ -38,13 +47,17 @@ provide record Request {
   protocolVersion: String,
 }
 
+/**
+  `Response` is provided as argument to any functions provided to `registerResponseHandler` 
+*/
 provide record Response {
   headers: List<String>,
 }
 
+/* Function signature callback in `registerResponseHandler` */
 provide type RequestHandler = Request => Bool
+/* Function signature callback in `registerResponseHandler` */
 provide type ResponseHandler = Response => Void
-
 
 let defaultRequestHandler = (req: Request) => {
   // log(Debug, "hello world") // debug use
@@ -59,7 +72,9 @@ let defaultResponseHandler = (resp: Response) => {
 let mut requestHandlers = List.init(1, n => defaultRequestHandler)
 let mut responseHandlers = List.init(1, n => defaultResponseHandler)
 
-
+/**
+  See http-wasm ABI spec for [log_level](./http-wasm-abi.md#log_level)
+ */
 provide enum LogLevel {
   Debug,
   Info,
@@ -67,6 +82,40 @@ provide enum LogLevel {
   Err,
 }
 
+/**
+  See http-wasm ABI spec for [`features`](./http-wasm-abi.md#features)
+
+ */
+provide enum Features {
+  BufferRequest,
+  BufferResponse,
+  Trailers,
+}
+
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._log](./http-wasm-abi.md#httpwasmabi_enable_features)
+
+> "whether the next handler on the host flushes the response prior to
+returning is implementation-specific..."
+*/
+@unsafe
+provide let enableFeatures = (features: List<Features>) => {
+  use Uint32.{(+)}
+  let mut flags = 0ul
+  List.forEach(feature => {
+    match (feature) {
+      BufferRequest => flags = flags + 1ul,
+      BufferResponse => flags = flags + 2ul,
+      Trailers => flags = flags +  4ul,
+    }
+  }, features)
+  _enableFeatures(Conv.fromUint32(flags))
+  void
+}
+
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._log](./http-wasm-abi.md#httpwasmabi_log)
+ */
 @unsafe
 provide let log = (level: LogLevel, msg: String) => {
   use WasmI32.{ (+) }
@@ -79,14 +128,15 @@ provide let log = (level: LogLevel, msg: String) => {
   }
   let namePtr = WasmI32.fromGrain(msg)
   let nameLen = WasmI32.load(namePtr, 4n)
-  _log(logLevel, namePtr + 8n, nameLen) 
+  _log(logLevel, namePtr + 8n, nameLen)
   void
 }
 
-
 /**
- * Get middleware configuration exposed from Traefik as string containing unparsed json 
- */
+  Get middleware dynamic configuration exposed from Traefik as string containing unparsed JSON string 
+
+  See http-wasm ABI spec for [HttpWasmAbi._getConfig](./http-wasm-abi.md#httpwasmabi_getconfig)
+*/
 @unsafe
 provide let getConfig = () => {
   use WasmI32.{ (+) }
@@ -98,20 +148,36 @@ provide let getConfig = () => {
 }
 
 /**
- * Middleware configuration exposed from Traefik, as Grain Json.* types
- */
-provide let hostJson = match (Json.parse(getConfig())) {
-  Ok(conf) => conf,
-  _ => JsonNull
+  _Grain helper function to parse JSON from Traefik, so not part of http-wasm ABI._ 
+
+  Middleware configuration exposed from Traefik via [`get_config`](./http-wasm-abi#get_config), as "raw" **Grain `Json.Json`** types.
+*/
+provide let hostJson = Json.parse(getConfig())
+
+/**
+  _Grain helper function to parse JSON from Traefik, so not part of http-wasm ABI_
+
+  Middleware configuration exposed from Traefik via [`get_config`](./http-wasm-abi#get_config), as **Grain `Map`** type.
+  This can be used like: `Map.get("Headers.Foo", configMap)`
+*/
+provide let configMap = match (hostJson) {
+  Ok(hostJson) => JsonTo.map(hostJson),
+  _ => Map.make()
 }
 
 /**
- * Middleware configuration exposed from Traefik, as Grain Json.* types.
- * This can be used like: `Map.get("Headers.Foo", hostConfig)`
+  _Grain helper function to parse JSON from Traefik, so not part of http-wasm ABI_
+
+  Quick access to config data from `plugin.gr` code.  For example:
+  ```grain
+  let fooHeaderValue = getConfigItem("Headers.Foo")
+  ```
  */
-provide let hostConfig = JsonTo.map(hostJson)
+provide let getConfigItem = (name) => Map.get(name, configMap)
 
-
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._getMethod](./http-wasm-abi.md#httpwasmabi_getmethod)
+ */
 @unsafe
 provide let getMethod = () => {
   use WasmI32.{ (+) }
@@ -122,6 +188,9 @@ provide let getMethod = () => {
   WasmI32.toGrain(strbuf): String
 }
 
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._getUri](./http-wasm-abi.md#httpwasmabi_geturi)
+ */
 @unsafe
 provide let getUri = () => {
   use WasmI32.{ (+) }
@@ -132,6 +201,9 @@ provide let getUri = () => {
   WasmI32.toGrain(strbuf): String
 }
 
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._getProtocolVersion](./http-wasm-abi.md#httpwasmabi_getprotocolversion)
+ */
 @unsafe
 provide let getProtocolVersion = () => {
   use WasmI32.{ (+) }
@@ -142,6 +214,9 @@ provide let getProtocolVersion = () => {
   WasmI32.toGrain(strbuf): String
 }
 
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._getSourceAddr](./http-wasm-abi.md#httpwasmabi_getsourceaddr)
+ */
 @unsafe
 provide let getSourceAddr = () => {
   use WasmI32.{ (+) }
@@ -152,11 +227,17 @@ provide let getSourceAddr = () => {
   WasmI32.toGrain(strbuf): String
 }
 
+/**
+  See http-wasm ABI spec for [header_kind](./http-wasm-abi.md#header_kind)
+ */
 provide enum HeaderKind {
   RequestHeader,
   ResponseHeader,
 }
 
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._getHeaderNames](./http-wasm-abi.md#httpwasmabi_getheadernames)
+ */
 @unsafe
 provide let getHeaderNames = (headerKind: HeaderKind) => {
   use WasmI32.{ (+), (-), (<), (>), (<) }
@@ -210,6 +291,9 @@ provide let getHeaderNames = (headerKind: HeaderKind) => {
   }): List<String>
 }
 
+/**
+  See http-wasm ABI spec for [HttpWasmAbi._getHeaderValues](./http-wasm-abi.md#httpwasmabi_getheadervalues)
+ */
 @unsafe
 provide let getHeaderValues = (headerKind: HeaderKind, name: String) => {
   use WasmI32.{ (+), (-) }
@@ -259,12 +343,18 @@ provide let getHeaderValues = (headerKind: HeaderKind, name: String) => {
 }
 
 /**
- * Note: plugin will panic if `addHeaderValue()` is called on existing header.
- *   Check `getHeaderName()` if header already exists _before_ call `addHeaderValue()`. 
+  **NOTE** plugin will panic if `addHeaderValue()` is called on existing header.
+  Check `getHeaderName()` if header already exists _before_ call `addHeaderValue()`. 
+
+  See http-wasm ABI spec for [HttpWasmAbi._addHeaderValue](./http-wasm-abi.md#httpwasmabi_addheadervalue)
  */
 @unsafe
-provide let addHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
-  use WasmI32.{(+)}
+provide let addHeaderValue = (
+  headerKind: HeaderKind,
+  name: String,
+  value: String,
+) => {
+  use WasmI32.{ (+) }
 
   let kind = match (headerKind) {
     RequestHeader => 0n,
@@ -276,18 +366,24 @@ provide let addHeaderValue = (headerKind: HeaderKind, name: String, value: Strin
   let valuePtr = WasmI32.fromGrain(value)
   let valueLen = WasmI32.load(valuePtr, 4n)
 
-  //_log(-1n, namePtr + 8n, nameLen)   
-  _addHeaderValue(kind, (namePtr + 8n), nameLen, (valuePtr + 8n), valueLen)
+  //_log(-1n, namePtr + 8n, nameLen)
+  _addHeaderValue(kind, namePtr + 8n, nameLen, valuePtr + 8n, valueLen)
   void
 }
 
 /**
- * Note: plugin will panic if `setHeaderValue()` is called on non-existing header.
- *   Check `getHeaderName()` to make sure header exists _before_ call `setHeaderValue()`. 
+  **NOTE** plugin will panic if `setHeaderValue()` is called on non-existing header.
+  Check `getHeaderName()` to make sure header exists _before_ call `setHeaderValue()`. 
+
+  See http-wasm ABI spec for [HttpWasmAbi._setHeaderValue](./http-wasm-abi.md#httpwasmabi_setheadervalue)
  */
 @unsafe
-provide let setHeaderValue = (headerKind: HeaderKind, name: String, value: String) => {
-  use WasmI32.{(+)}
+provide let setHeaderValue = (
+  headerKind: HeaderKind,
+  name: String,
+  value: String,
+) => {
+  use WasmI32.{ (+) }
 
   let kind = match (headerKind) {
     RequestHeader => 0n,
@@ -299,14 +395,37 @@ provide let setHeaderValue = (headerKind: HeaderKind, name: String, value: Strin
   let valuePtr = WasmI32.fromGrain(value)
   let valueLen = WasmI32.load(valuePtr, 4n)
 
-  //_log(-1n, namePtr + 8n, nameLen)   
-  _setHeaderValue(kind, (namePtr + 8n), nameLen, (valuePtr + 8n), valueLen)
+  //_log(-1n, namePtr + 8n, nameLen)
+  _setHeaderValue(kind, namePtr + 8n, nameLen, valuePtr + 8n, valueLen)
   void
 }
 
 /**
- * **Response Only** 
- * Note: Will panic if status code has not be previously set.
+  See http-wasm ABI spec for [HttpWasmAbi._removeHeader](./http-wasm-abi.md#httpwasmabi_removeheader)
+ */
+@unsafe
+provide let removeHeader = (headerKind: HeaderKind, name: String) => {
+  use WasmI32.{ (+) }
+
+  let kind = match (headerKind) {
+    RequestHeader => 0n,
+    ResponseHeader => 1n,
+  }
+
+  let namePtr = WasmI32.fromGrain(name)
+  let nameLen = WasmI32.load(namePtr, 4n)
+
+  //_log(-1n, namePtr + 8n, nameLen)
+  _removeHeader(kind, namePtr + 8n, nameLen)
+  void
+}
+
+/**
+  #### Response Only
+
+  **NOTE** will panic if status code has not be previously set.
+
+  See http-wasm ABI spec for [HttpWasmAbi._getStatusCode](./http-wasm-abi.md#httpwasmabi_getstatuscode)
  */
 @unsafe
 provide let getStatusCode = () => {
@@ -314,6 +433,13 @@ provide let getStatusCode = () => {
   Conv.toInt32(statusCode)
 }
 
+/**
+  **This is critical to how `plugin.gr` works.**  The interface between `handle_request` and Grain
+  Traefik Plugin code is one or more calls to `registerRequestHandler`.  This module will use
+  list of "registered handlers" when a call from host (Traefik) to `handle_request` is invoked. 
+
+  _All registered functions must return `true` or `false` to indicate whether HTTP processing should continue._
+ */
 provide let registerRequestHandler = (fn: RequestHandler) =>
   requestHandlers = List.insert(
     List.length(requestHandlers),
@@ -321,34 +447,27 @@ provide let registerRequestHandler = (fn: RequestHandler) =>
     requestHandlers
   )
 
-
 provide let registerResponseHandler = (fn: ResponseHandler) =>
   responseHandlers = List.insert(
     List.length(responseHandlers),
     fn,
     responseHandlers
   )
+/**
+  The interface between `handle_response` and Grain
+  Traefik Plugin code is one or more calls to `registerResponseHandler`.  This module will use
+  list of "registered handlers" when a call from host (Traefik) to `handle_response` is invoked. 
 
-/*
-// special case, traefik's plugin validater checks "testData" if header is added
-registerRequestHandler(req => match (match (hostConfig) {
-  JsonObject([(root, JsonObject([(key, JsonString(value))]))]) => 
-    Ok((key, value)),
-    _ => Err("no config value found"),
-  }) {
-  Ok((key, value)) => {
-    addHeaderValue(ResponseHeader, key, value)
-    log(Debug, String.concat("special case, add response header: ", key))
-    true
-  },
-  _ => true,
-})
-*/
+   _Once in `handle_response`, the request is being sent regardless. So response handlers in `plugin.gr` always return `void`._
+ */
 
+/**
+  See http-wasm ABI spec for [handle_request](./http-wasm-abi.md#handle_request)
+ */
 @unsafe
 provide let handle_request = () => {
   log(Debug, "wasm-grain plugin start at handle_request")
-  
+
   let next = List.every(
     onRequest =>
       onRequest(
@@ -364,19 +483,44 @@ provide let handle_request = () => {
   )
   match (next) {
     true => 1N,
-    false => 0N
+    false => 0N,
   }
 }
 
+/**
+  See http-wasm ABI spec for [handle_response](./http-wasm-abi.md#handle_response)
+*/
 @unsafe
 provide let handle_response = (high: WasmI32, low: WasmI32) => {
   List.forEach(
-    onResponse => onResponse({ headers: getHeaderNames(ResponseHeader) }),
+    onResponse => onResponse({ headers: getHeaderNames(ResponseHeader), }),
     responseHandlers
   )
+  
   log(Debug, "wasm-grain plugin done after handle_response")
   void
 }
 
+/**
+   Helper to remove C-like null-terminated strings that http-wasm returns.
 
+   **Returns** String to the null-terminator
 
+   > Traefik logging seems to ignore them.
+   > However Grain `Number.parse()` treats null-terminated string as invalid char.
+ */
+provide let stripNulls = (str) => {
+  match (String.contains("\0", str)) {
+    true => Array.get(0, String.split("\0", str)),
+    false => str
+  }
+}
+
+/**
+ * For debugging, dump strings as codepoints to see tailing non-printables
+ */
+provide let dumpCodePoints = (str) => {
+  let fifo = Queue.make()
+  String.forEachCodePoint(n => { Queue.push(toString(n), fifo) }, str)
+  Array.join(",", Queue.toArray(fifo))
+}
