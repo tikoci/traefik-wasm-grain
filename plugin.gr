@@ -34,7 +34,7 @@ let addRequestTimestamp = (resp: Request) => {
   addHeaderValue(
     ResponseHeader,
     "X-Grain-Timestamp",
-    toString(Result.unwrap(Time.monotonicTime()))
+    toString(Result.unwrap(Time.realTime()))
   )
   true
 }
