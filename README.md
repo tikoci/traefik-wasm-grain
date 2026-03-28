@@ -1,5 +1,5 @@
 # traefik-wasm-grain
-_⚠️ Traefik WASM plugin using Grain and http-wasm ABI_
+_🧪 Traefik WASM plugin using Grain and http-wasm ABI_
 
 Traefik 3.0 introduced support for [WASM-based middleware plugins](https://traefik.io/blog/traefik-3-deep-dive-into-wasm-support-with-coraza-waf-plugin/), with [http-wasm](https://http-wasm.io) providing the WASM-based middleware API.  Essentially, WASM allows Traefik Plugins to be implemented in languages other than `go`.  
 
